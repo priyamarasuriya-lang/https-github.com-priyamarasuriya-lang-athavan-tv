@@ -12,7 +12,7 @@ export const GET = api({ permission: 'settings.manage' }, async () => ({
 }));
 
 export const PUT = api({ permission: 'settings.manage' }, async ({ actor, req }) => {
-  const body = await parseJson(req, z.record(z.unknown()));
+  const body = await parseJson(req, z.record(z.string(), z.unknown()));
   const updates: Array<[SettingKey, unknown]> = [];
   for (const [key, value] of Object.entries(body)) {
     if (!(key in SETTINGS)) throw new AppError('VALIDATION_ERROR', `Unknown setting "${key}".`);

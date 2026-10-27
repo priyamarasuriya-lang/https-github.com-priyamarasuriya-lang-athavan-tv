@@ -2,7 +2,7 @@
 # Multi-stage build for the BAT scheduling app (Next.js + Prisma). Not yet exercised on the
 # development machine (Docker was unavailable there) — see README "Known limitations".
 
-FROM node:22-bookworm-slim AS base
+FROM node:24-bookworm-slim AS base
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 

@@ -110,7 +110,7 @@ export const ruleInputSchema = z.object({
   channelId: z.preprocess(emptyToNull, z.string().nullish()),
   severity: z.enum(['ERROR', 'WARNING']).default('ERROR'),
   isActive: z.boolean().default(true),
-  params: z.record(z.unknown()),
+  params: z.record(z.string(), z.unknown()),
 });
 
 /** Per-type parameter schemas so rules stored in the database are always well-formed. */

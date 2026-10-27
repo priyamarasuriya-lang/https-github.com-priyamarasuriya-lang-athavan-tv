@@ -21,7 +21,7 @@ export interface ItemInput {
   children?: ItemInput[];
 }
 
-export const itemInputSchema: z.ZodType<ItemInput, z.ZodTypeDef, unknown> = z.lazy(() =>
+export const itemInputSchema: z.ZodType<ItemInput, unknown> = z.lazy(() =>
   z
     .object({
       clientKey: z.string().uuid().optional(),
