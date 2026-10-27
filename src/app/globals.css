@@ -1,0 +1,62 @@
+@import 'tailwindcss';
+
+/* Palette drawn from the BAT reference tiles: amber, teal, coral, sky, navy on light grey. */
+@theme {
+  --color-navy-950: #141c2b;
+  --color-navy-900: #1e2a44;
+  --color-navy-800: #2f3e55;
+  --color-navy-700: #3f5170;
+  --color-navy-600: #566a8c;
+  --color-surface: #ffffff;
+  --color-canvas: #f3f4f6;
+  --color-line: #e2e6ec;
+  --color-muted: #64748b;
+  --color-teal-400: #4cd5c2;
+  --color-teal-500: #2fc0ab;
+  --color-teal-600: #1f9d8b;
+  --color-teal-700: #177a6c;
+  --color-amber-300: #f5c343;
+  --color-amber-400: #e6a935;
+  --color-amber-600: #b7801a;
+  --color-coral-400: #ff7a66;
+  --color-coral-500: #f2604b;
+  --color-coral-600: #d64532;
+  --color-sky-300: #7fd3f7;
+  --color-sky-500: #3aa6df;
+
+  --font-sans: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'Cascadia Mono', 'Consolas', ui-monospace, monospace;
+}
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  background: var(--color-canvas);
+  color: var(--color-navy-900);
+}
+
+/* Visible focus for keyboard users everywhere. */
+:focus-visible {
+  outline: 2px solid var(--color-teal-600);
+  outline-offset: 2px;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+dialog::backdrop {
+  background: rgb(20 28 43 / 0.45);
+}

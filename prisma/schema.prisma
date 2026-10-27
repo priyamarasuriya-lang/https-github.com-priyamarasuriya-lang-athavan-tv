@@ -1,0 +1,598 @@
+// BAT TV Scheduling System — PostgreSQL schema.
+//
+// Conventions
+// - Durations are integer milliseconds (Int, max ~24.8 days — far above any broadcast item).
+// - Instants are stored as timestamptz in UTC. Channel-local interpretation uses Channel.timeZone (IANA).
+// - "Minute of day" fields (0..1439) are channel-local wall-clock minutes; a window whose start > end wraps midnight.
+// - broadcastDate is the *operational* broadcast day (a channel day starting at broadcastDayStartMinute),
+//   not the calendar date of each item.
+// Invariants Prisma cannot express are added as raw SQL in migrations (see README "Database invariants").
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────────── Identity & access ─────────────────────────────
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique // stored lower-cased
+  name         String
+  passwordHash String
+  isActive     Boolean   @default(true)
+  lockedUntil  DateTime? @db.Timestamptz(3)
+  lastLoginAt  DateTime? @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
+
+  roles         UserRole[]
+  sessions      Session[]
+  notifications Notification[]
+  auditLogs     AuditLog[]
+}
+
+model Session {
+  // HMAC-SHA256 of the opaque token held in the cookie; the raw token is never stored.
+  id         String   @id
+  userId     String
+  expiresAt  DateTime @db.Timestamptz(3)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  lastSeenAt DateTime @default(now()) @db.Timestamptz(3)
+  ip         String?
+  userAgent  String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  email     String
+  ip        String?
+  success   Boolean
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([email, createdAt])
+  @@index([ip, createdAt])
+}
+
+model Role {
+  id          String  @id @default(cuid())
+  key         String  @unique
+  name        String
+  description String?
+  isSystem    Boolean @default(false)
+
+  users       UserRole[]
+  permissions RolePermission[]
+}
+
+model Permission {
+  id          String @id @default(cuid())
+  key         String @unique
+  description String
+
+  roles RolePermission[]
+}
+
+model UserRole {
+  userId String
+  roleId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+}
+
+// ───────────────────────────── Channels ─────────────────────────────
+
+model Channel {
+  id                      String   @id @default(cuid())
+  code                    String   @unique
+  name                    String
+  timeZone                String // IANA zone, e.g. "Asia/Colombo"
+  broadcastDayStartMinute Int      @default(360) // 06:00 local
+  defaultGapMs            Int      @default(0)
+  underrunToleranceMs     Int      @default(60000)
+  playoutSystem           String? // integration boundary label only; no live playout link is implemented
+  isActive                Boolean  @default(true)
+  createdAt               DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime @updatedAt @db.Timestamptz(3)
+
+  schedules        BroadcastSchedule[]
+  contentChannels  ContentChannel[]
+  campaignChannels CampaignChannel[]
+  rules            ScheduleRule[]
+  templates        ScheduleTemplate[]
+  breaks           CommercialBreak[]
+  airings          AdAiring[]
+}
+
+// ───────────────────────────── Content & media ─────────────────────────────
+
+enum ContentCategory {
+  PROGRAM
+  MOVIE
+  NEWS
+  LIVE
+  SPECIAL_EVENT
+  ADVERTISEMENT
+  PROMO
+  FILLER
+  SLIDE
+  STATION_ID
+  PSA
+}
+
+enum ContentStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum ApprovalState {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AssetStatus {
+  AVAILABLE
+  MISSING
+}
+
+model MediaAsset {
+  id             String      @id @default(cuid())
+  originalName   String
+  storageKey     String      @unique
+  mimeType       String
+  sizeBytes      Int
+  checksumSha256 String
+  durationMs     Int?
+  status         AssetStatus @default(AVAILABLE)
+  uploadedById   String?
+  createdAt      DateTime    @default(now()) @db.Timestamptz(3)
+
+  contentItems ContentItem[]
+
+  @@index([checksumSha256])
+}
+
+model ContentItem {
+  id                 String          @id @default(cuid())
+  houseNumber        String?         @unique
+  title              String
+  category           ContentCategory
+  description        String?
+  assetId            String?
+  originalDurationMs Int?
+  plannedDurationMs  Int
+  isDurationEditable Boolean         @default(true)
+  status             ContentStatus   @default(ACTIVE)
+  approvalState      ApprovalState   @default(APPROVED)
+  language           String?
+  rating             String? // e.g. G, PG, PG13, 18
+  rightsHolder       String?
+  licenseNotes       String?
+  maxAiringsPerDay   Int?
+  availableFrom      DateTime?       @db.Timestamptz(3)
+  availableUntil     DateTime?       @db.Timestamptz(3)
+  allowedStartMinute Int?
+  allowedEndMinute   Int?
+  createdById        String?
+  updatedById        String?
+  createdAt          DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime        @updatedAt @db.Timestamptz(3)
+
+  asset         MediaAsset?      @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  channels      ContentChannel[] // empty = eligible on every channel
+  advertisement Advertisement?
+  scheduleItems ScheduleItem[]
+
+  @@index([category, status])
+  @@index([title])
+  @@index([updatedAt])
+}
+
+model ContentChannel {
+  contentItemId String
+  channelId     String
+
+  contentItem ContentItem @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+  channel     Channel     @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@id([contentItemId, channelId])
+  @@index([channelId])
+}
+
+// ───────────────────────────── Advertising ─────────────────────────────
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+model Advertiser {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  contactName  String?
+  contactEmail String?
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+
+  campaigns AdvertisingCampaign[]
+}
+
+model AdvertisingCampaign {
+  id                 String         @id @default(cuid())
+  name               String
+  advertiserId       String
+  startDate          DateTime       @db.Date
+  endDate            DateTime       @db.Date
+  priority           Int            @default(5) // 1 = highest
+  maxAirings         Int?
+  contractedAirings  Int?
+  dailyLimit         Int?
+  weeklyLimit        Int?
+  minSpacingMs       Int?
+  allowedStartMinute Int?
+  allowedEndMinute   Int?
+  budgetCents        Int?
+  status             CampaignStatus @default(DRAFT)
+  approvalState      ApprovalState  @default(PENDING)
+  createdAt          DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime       @updatedAt @db.Timestamptz(3)
+
+  advertiser Advertiser        @relation(fields: [advertiserId], references: [id], onDelete: Restrict)
+  channels   CampaignChannel[] // empty = all channels
+  ads        Advertisement[]
+  airings    AdAiring[]
+
+  @@index([status, startDate, endDate])
+  @@index([advertiserId])
+}
+
+model CampaignChannel {
+  campaignId String
+  channelId  String
+
+  campaign AdvertisingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  channel  Channel             @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@id([campaignId, channelId])
+  @@index([channelId])
+}
+
+model Advertisement {
+  id            String   @id @default(cuid())
+  campaignId    String
+  contentItemId String   @unique // the creative: a ContentItem with category ADVERTISEMENT
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  campaign    AdvertisingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contentItem ContentItem         @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+  airings     AdAiring[]
+
+  @@index([campaignId])
+}
+
+model CommercialBreak {
+  id                String   @id @default(cuid())
+  name              String
+  channelId         String? // null = usable on any channel
+  defaultDurationMs Int
+  minDurationMs     Int
+  maxDurationMs     Int
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime @updatedAt @db.Timestamptz(3)
+
+  channel       Channel?       @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  scheduleItems ScheduleItem[]
+}
+
+enum AiringStatus {
+  PLANNED
+  AIRED
+  MISSED
+  CANCELLED
+}
+
+// Planned airings are materialised when a schedule is published (idempotently, per schedule).
+// "Actual" fields stay empty until a playout integration reports as-run data.
+model AdAiring {
+  id                String       @id @default(cuid())
+  campaignId        String
+  advertisementId   String
+  scheduleId        String
+  scheduleItemId    String       @unique
+  channelId         String
+  plannedStartAt    DateTime     @db.Timestamptz(3)
+  plannedDurationMs Int
+  status            AiringStatus @default(PLANNED)
+  actualStartAt     DateTime?    @db.Timestamptz(3)
+  actualDurationMs  Int?
+  createdAt         DateTime     @default(now()) @db.Timestamptz(3)
+
+  campaign      AdvertisingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  advertisement Advertisement       @relation(fields: [advertisementId], references: [id], onDelete: Cascade)
+  schedule      BroadcastSchedule   @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  scheduleItem  ScheduleItem        @relation(fields: [scheduleItemId], references: [id], onDelete: Cascade)
+  channel       Channel             @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId, plannedStartAt])
+  @@index([scheduleId])
+}
+
+// ───────────────────────────── Schedules ─────────────────────────────
+
+enum ScheduleStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ScheduleItemKind {
+  CONTENT
+  BREAK
+}
+
+enum TimingMode {
+  SEQUENTIAL // starts when the previous item (plus gap) ends
+  FIXED // starts at fixedStartAt regardless of what precedes it
+}
+
+model BroadcastSchedule {
+  id               String         @id @default(cuid())
+  channelId        String
+  broadcastDate    DateTime       @db.Date
+  title            String?
+  status           ScheduleStatus @default(DRAFT)
+  currentVersionNo Int            @default(1)
+  // Optimistic concurrency token: every write must present the value it read and bumps it.
+  lockVersion      Int            @default(0)
+  createdById      String
+  updatedById      String?
+  submittedAt      DateTime?      @db.Timestamptz(3)
+  approvedById     String?
+  approvedAt       DateTime?      @db.Timestamptz(3)
+  publishedById    String?
+  publishedAt      DateTime?      @db.Timestamptz(3)
+  archivedAt       DateTime?      @db.Timestamptz(3)
+  createdAt        DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime       @updatedAt @db.Timestamptz(3)
+
+  channel          Channel                 @relation(fields: [channelId], references: [id], onDelete: Restrict)
+  versions         ScheduleVersion[]
+  approvalRequests ApprovalRequest[]
+  validationRuns   ScheduleValidationRun[]
+  airings          AdAiring[]
+
+  // Uniqueness of (channelId, broadcastDate) among non-archived schedules is a partial unique index (raw SQL).
+  @@index([channelId, broadcastDate])
+  @@index([status])
+  @@index([broadcastDate])
+}
+
+model ScheduleVersion {
+  id          String    @id @default(cuid())
+  scheduleId  String
+  versionNo   Int
+  note        String?
+  createdById String
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  frozenAt    DateTime? @db.Timestamptz(3) // set once the version has been approved; frozen versions never change
+
+  schedule BroadcastSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  items    ScheduleItem[]
+
+  @@unique([scheduleId, versionNo])
+}
+
+model ScheduleItem {
+  id                  String           @id @default(cuid())
+  versionId           String
+  parentId            String? // set for advertisements placed inside a BREAK item
+  position            Int
+  kind                ScheduleItemKind
+  contentItemId       String?
+  commercialBreakId   String?
+  label               String?
+  timingMode          TimingMode       @default(SEQUENTIAL)
+  fixedStartAt        DateTime?        @db.Timestamptz(3)
+  plannedDurationMs   Int? // override of the content/break default
+  estimatedDurationMs Int? // live events: current estimate, used for timing when set
+  gapAfterMs          Int?
+  isLive              Boolean          @default(false)
+  notes               String?
+  // Server-computed by the scheduling engine on every save — never accepted from clients.
+  startAt             DateTime         @db.Timestamptz(3)
+  endAt               DateTime         @db.Timestamptz(3)
+  effectiveDurationMs Int
+  // As-run data, only populated by a playout integration.
+  actualStartAt       DateTime?        @db.Timestamptz(3)
+  actualDurationMs    Int?
+
+  version         ScheduleVersion  @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  parent          ScheduleItem?    @relation("BreakChildren", fields: [parentId], references: [id], onDelete: Cascade)
+  children        ScheduleItem[]   @relation("BreakChildren")
+  contentItem     ContentItem?     @relation(fields: [contentItemId], references: [id], onDelete: Restrict)
+  commercialBreak CommercialBreak? @relation(fields: [commercialBreakId], references: [id], onDelete: SetNull)
+  airing          AdAiring?
+
+  @@index([versionId, startAt])
+  @@index([contentItemId])
+}
+
+model ScheduleTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  channelId   String?
+  // Ordered item specs (content/break references with relative timing). JSON because templates are
+  // copied wholesale into schedules and never queried item-by-item.
+  items       Json
+  createdById String
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  channel Channel? @relation(fields: [channelId], references: [id], onDelete: Cascade)
+}
+
+enum RuleType {
+  NO_DUPLICATE_CONTENT
+  RATING_TIME_WINDOW
+  CATEGORY_TIME_WINDOW
+  CATEGORY_REQUIRES_APPROVAL
+  SCHEDULE_END_DEADLINE
+  MAX_GAP
+}
+
+enum Severity {
+  ERROR
+  WARNING
+}
+
+model ScheduleRule {
+  id        String   @id @default(cuid())
+  name      String
+  type      RuleType
+  channelId String? // null = all channels
+  params    Json
+  severity  Severity @default(ERROR)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  channel Channel? @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@index([isActive])
+}
+
+// Persisted so the approval queue and conflict report can show the validation state a decision was based on.
+model ScheduleValidationRun {
+  id           String   @id @default(cuid())
+  scheduleId   String
+  versionNo    Int
+  lockVersion  Int
+  trigger      String // save | validate | submit | approve | publish
+  errorCount   Int
+  warningCount Int
+  results      Json
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  schedule BroadcastSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@index([scheduleId, createdAt])
+}
+
+// ───────────────────────────── Workflow ─────────────────────────────
+
+enum ApprovalRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  WITHDRAWN
+}
+
+enum DecisionType {
+  APPROVED
+  REJECTED
+}
+
+model ApprovalRequest {
+  id            String                @id @default(cuid())
+  scheduleId    String
+  versionNo     Int
+  submittedById String
+  submittedAt   DateTime              @default(now()) @db.Timestamptz(3)
+  note          String?
+  status        ApprovalRequestStatus @default(PENDING)
+
+  schedule  BroadcastSchedule  @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  decisions ApprovalDecision[]
+
+  @@index([status, submittedAt])
+  @@index([scheduleId])
+}
+
+model ApprovalDecision {
+  id          String       @id @default(cuid())
+  requestId   String
+  decidedById String
+  decision    DecisionType
+  reason      String?
+  createdAt   DateTime     @default(now()) @db.Timestamptz(3)
+
+  request ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+}
+
+// ───────────────────────────── Cross-cutting ─────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String // e.g. schedule.submit
+  entityType String
+  entityId   String
+  summary    String?
+  data       Json?
+  ip         String?
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@index([actorId])
+  @@index([action])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  body      String?
+  link      String?
+  readAt    DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+}
+
+model SystemSetting {
+  key         String   @id
+  value       Json
+  updatedById String?
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+}
