@@ -29,9 +29,9 @@ Generate a secret: `node -e "console.log(require('crypto').randomBytes(32).toStr
    npm start                   # or a process manager (pm2, systemd, NSSM on Windows)
    ```
    or with Docker: `docker compose up -d --build` (the container runs `migrate deploy` on start).
-4. **Do not run the seed in production.** Create the first Super Administrator once, e.g. by
-   running the seed against an empty staging copy and migrating users, or with a one-off script
-   that calls `createUser`. Then remove/disable any development accounts.
+4. **Do not run the seed in production.** Create the first Super Administrator once with
+   `npm run admin:create -- --email you@example.com --name "Your Name"` (prompts for the password;
+   see docs/vercel.md). Then remove/disable any development accounts.
 5. Monitoring: poll `GET /api/health` (returns 503 when the database is unreachable). Logs are
    one JSON object per line on stdout/stderr (`ts`, `level`, `msg`, `requestId`, error details).
    Unexpected errors return a reference id that matches the log line.

@@ -99,6 +99,7 @@ News 24 draft showing gap/overlap conflicts.
 | `npm run db:migrate` | Apply migrations (`prisma migrate deploy`) |
 | `npm run db:migrate:dev` | Create a new migration during development |
 | `npm run db:seed` | Load demo data (skips if users exist) |
+| `npm run admin:create -- --email … --name …` | Create a Super Administrator (password prompted; `--reset` to recover). See docs/vercel.md for hosted databases. |
 | `npm run db:reset` | **Destroys all data** in `DATABASE_URL`, re-migrates and re-seeds. Development only. |
 
 ## Features

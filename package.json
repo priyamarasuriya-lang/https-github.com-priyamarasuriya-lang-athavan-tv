@@ -18,6 +18,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma migrate reset --force && prisma db seed",
     "db:generate": "prisma generate",
+    "admin:create": "tsx scripts/create-admin.ts",
     "postinstall": "prisma generate"
   },
   "engines": {

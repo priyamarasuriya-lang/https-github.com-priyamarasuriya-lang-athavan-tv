@@ -45,6 +45,28 @@ node --env-file=.env.vercel node_modules/tsx/dist/cli.mjs prisma/seed.ts
 `.env.vercel` contains secrets: it is git-ignored; delete it when done. For real station use, skip the
 demo seed and instead create one Super Administrator, then remove or deactivate the demo accounts.
 
+### Create the first Super Administrator
+
+`scripts/create-admin.ts` creates a Super Administrator in whichever database `DATABASE_URL` points at.
+On an empty database it also creates the permissions and system roles. It shows the target host and
+database name, asks you to type `yes`, then asks for the password twice at a hidden prompt (12+
+characters, upper- and lower-case and a digit). The password is never passed on the command line.
+
+```bash
+npx vercel env pull .env.vercel --environment=production
+node --env-file=.env.vercel node_modules/tsx/dist/cli.mjs scripts/create-admin.ts --email you@example.com --name "Your Name"
+```
+
+Run it in a real terminal (PowerShell, Windows Terminal, or the VS Code terminal); it refuses to run
+without one. Check that the `Database:` line shows the Neon host before typing `yes`. If it shows
+`localhost`, `.env.vercel` has no `DATABASE_URL` (Vercel leaves variables marked **Sensitive** empty
+when pulled): copy the connection string from the Neon dashboard into `.env.vercel` instead.
+
+If you forget the password or the account gets locked, re-run with `--reset` (no `--name` needed). That sets
+a new password, re-activates and unlocks the account, makes sure it is a Super Administrator and signs
+out its existing sessions. Delete `.env.vercel` when done. Against a local database the shorter form works:
+`npm run admin:create -- --email you@example.com --name "Your Name"`.
+
 ## Vercel-specific limits
 
 - **Uploads are limited to ~4 MB** per file: Vercel functions accept request bodies up to 4.5 MB.
