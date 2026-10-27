@@ -175,4 +175,4 @@ Recorded honestly — none of these are presented as working in the UI.
 - **Campaign daily/weekly quotas across channels** bucket other channels' airings by the *current* channel's local date; this is exact for stations whose channels share a time zone.
 - Report exports load up to 50,000 rows into memory per request; very large date ranges should be split.
 - The schedule editor is fully usable at desktop/tablet widths; on phones it is read-friendly but drag-and-drop editing is not optimised.
-- Prisma 6.19 is used (stable and well-understood); Prisma 7 migration (`prisma.config.ts`, driver adapters) is a future upgrade.
+- Prisma 7 with the `@prisma/adapter-pg` driver adapter. CLI settings (schema, migrations, seed, database URL) are in `prisma.config.ts`; the client is generated into `src/generated/prisma` (git-ignored) by `npm install` / `npm run db:generate`.

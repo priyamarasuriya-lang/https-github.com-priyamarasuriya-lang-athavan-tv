@@ -8,13 +8,15 @@
 //   not the calendar date of each item.
 // Invariants Prisma cannot express are added as raw SQL in migrations (see README "Database invariants").
 
+// The connection URL lives in prisma.config.ts; the app connects through @prisma/adapter-pg (src/server/db.ts).
 generator client {
-  provider = "prisma-client-js"
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 // ───────────────────────────── Identity & access ─────────────────────────────

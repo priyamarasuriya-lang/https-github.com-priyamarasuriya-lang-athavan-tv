@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from '@/generated/prisma/client';
 import { prisma, type Tx } from '@/server/db';
 
 export interface AuditEntry {

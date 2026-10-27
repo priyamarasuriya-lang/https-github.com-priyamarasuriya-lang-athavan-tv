@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from '@/generated/prisma/client';
 import type { Actor } from '@/server/auth/actor';
 import { prisma, type Tx } from '@/server/db';
 import { AppError } from '@/server/errors';

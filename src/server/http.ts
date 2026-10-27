@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@/generated/prisma/client';
 import { NextResponse, type NextRequest } from 'next/server';
 import { ZodError, type z, type ZodTypeAny } from 'zod';
 import { clientIp, toActor, type Actor } from '@/server/auth/actor';
@@ -77,7 +77,12 @@ export function errorResponse(err: unknown, requestId: string, req?: NextRequest
     if (err.code === 'P2025') return NextResponse.json({ error: { code: 'NOT_FOUND', message: 'Record not found.' } }, { status: 404 });
     if (err.code === 'P2003') return NextResponse.json({ error: { code: 'CONFLICT', message: 'This record is referenced by other data and cannot be changed that way.' } }, { status: 409 });
   }
-  if (err instanceof Prisma.PrismaClientUnknownRequestError && /violates check constraint/.test(err.message)) {
+  // Raw-SQL CHECK invariants. Prisma 7's pg adapter reports a violation as a known error (P2039, Postgres 23514);
+  // older engines used an unknown error. Both carry Postgres's message.
+  if (
+    (err instanceof Prisma.PrismaClientKnownRequestError || err instanceof Prisma.PrismaClientUnknownRequestError) &&
+    /violates check constraint/.test(err.message)
+  ) {
     return NextResponse.json({ error: { code: 'VALIDATION_ERROR', message: 'A value is out of the permitted range.' } }, { status: 400 });
   }
   logger.error('unhandled error', { requestId, path: req?.nextUrl.pathname, err });

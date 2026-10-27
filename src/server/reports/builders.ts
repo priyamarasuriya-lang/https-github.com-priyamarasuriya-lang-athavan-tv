@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from '@/generated/prisma/client';
 import { z } from 'zod';
 import { requirePermission, type Actor } from '@/server/auth/actor';
 import { prisma } from '@/server/db';

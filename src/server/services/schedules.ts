@@ -1,4 +1,4 @@
-import type { Channel, Prisma } from '@prisma/client';
+import type { Channel, Prisma } from '@/generated/prisma/client';
 import { requirePermission, type Actor } from '@/server/auth/actor';
 import { prisma, type Tx } from '@/server/db';
 import { AppError, notFound } from '@/server/errors';

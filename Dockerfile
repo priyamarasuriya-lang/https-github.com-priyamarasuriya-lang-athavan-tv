@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-cert
 WORKDIR /app
 
 FROM base AS deps
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json prisma.config.ts ./
 COPY prisma ./prisma
 RUN npm ci --no-audit --no-fund
 
@@ -22,7 +22,7 @@ RUN useradd --system --uid 1001 bat && mkdir -p /app/storage/uploads && chown -R
 COPY --from=build --chown=bat /app/node_modules ./node_modules
 COPY --from=build --chown=bat /app/.next ./.next
 COPY --from=build --chown=bat /app/prisma ./prisma
-COPY --from=build --chown=bat /app/package.json /app/next.config.ts ./
+COPY --from=build --chown=bat /app/package.json /app/next.config.ts /app/prisma.config.ts ./
 USER bat
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s CMD node -e "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"

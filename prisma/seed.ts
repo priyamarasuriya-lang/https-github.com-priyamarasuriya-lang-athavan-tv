@@ -8,7 +8,9 @@
  * Refuses to run when NODE_ENV=production unless ALLOW_PRODUCTION_SEED=yes.
  * Users share the password in SEED_PASSWORD (default documented in README — change it for any shared environment).
  */
-import { PrismaClient, type ContentCategory } from '@prisma/client';
+import 'dotenv/config';
+import type { ContentCategory } from '../src/generated/prisma/client';
+import { prisma } from '../src/server/db';
 import { storage } from '../src/server/storage';
 import { hashPassword, passwordPolicyError } from '../src/server/auth/password';
 import { PERMISSIONS, ROLES } from '../src/server/auth/permissions';
@@ -19,7 +21,6 @@ import { createSchedule, saveScheduleItems, getScheduleView } from '../src/serve
 import { transitionSchedule } from '../src/server/services/workflow';
 import type { ItemInput } from '../src/server/validators/schedule';
 
-const prisma = new PrismaClient();
 const MIN = 60_000;
 const SEC = 1000;
 

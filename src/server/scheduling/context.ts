@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Channel, Prisma, ScheduleItem } from '@prisma/client';
+import type { Channel, Prisma, ScheduleItem } from '@/generated/prisma/client';
 import type { Tx } from '@/server/db';
 import { AppError } from '@/server/errors';
 import { broadcastDayWindow, broadcastTimeToInstant, dateToIso, fmtLocalTime, toLocal } from '@/lib/time/zoned';
