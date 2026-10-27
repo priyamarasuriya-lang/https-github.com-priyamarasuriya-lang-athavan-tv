@@ -1,0 +1,13 @@
+# Never upload local secrets, data or build output with `vercel deploy`.
+.env
+.env.*
+!.env.example
+storage/
+*.log
+.next/
+.next-e2e/
+test-results/
+playwright-report/
+.agents/
+.claude/
+skills-lock.json
