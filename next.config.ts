@@ -28,6 +28,8 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR ?? '.next',
   // pdfkit reads its bundled font metrics from disk, so it must not be bundled.
   serverExternalPackages: ['pdfkit', 'exceljs', '@node-rs/argon2'],
+  // Make sure serverless bundles (e.g. Vercel) ship pdfkit's font metric files.
+  outputFileTracingIncludes: { '/api/**/*': ['./node_modules/pdfkit/js/data/**/*'] },
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },

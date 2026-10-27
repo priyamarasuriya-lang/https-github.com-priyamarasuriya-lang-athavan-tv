@@ -9,10 +9,8 @@
  * Users share the password in SEED_PASSWORD (default documented in README — change it for any shared environment).
  */
 import { PrismaClient, type ContentCategory } from '@prisma/client';
-import { mkdir, writeFile } from 'node:fs/promises';
-import path from 'node:path';
-import { randomUUID, createHash } from 'node:crypto';
-import { hashPassword } from '../src/server/auth/password';
+import { storage } from '../src/server/storage';
+import { hashPassword, passwordPolicyError } from '../src/server/auth/password';
 import { PERMISSIONS, ROLES } from '../src/server/auth/permissions';
 import type { Actor } from '../src/server/auth/actor';
 import { addDaysIso, isoToDbDate } from '../src/lib/time/zoned';
@@ -44,7 +42,14 @@ async function main() {
     console.log('Database already contains users — skipping seed. Run `npm run db:reset` for a fresh demo database.');
     return;
   }
+  // The documented default is for local development only; any hosted/production seed must set its own.
+  const isLocalDev = process.env.NODE_ENV !== 'production' && !process.env.VERCEL && /@(localhost|127\.0\.0\.1)[:/]/.test(process.env.DATABASE_URL ?? '');
+  if (!process.env.SEED_PASSWORD && !isLocalDev) {
+    throw new Error('Set SEED_PASSWORD (12+ chars, upper/lower-case and a digit) when seeding a non-local database.');
+  }
   const password = process.env.SEED_PASSWORD ?? 'BatDemo!2026pass';
+  const policy = passwordPolicyError(password);
+  if (policy) throw new Error(`SEED_PASSWORD rejected: ${policy}`);
 
   // ── Roles & permissions ──
   for (const [key, description] of Object.entries(PERMISSIONS)) await prisma.permission.create({ data: { key, description } });
@@ -65,13 +70,11 @@ async function main() {
   const batn = await prisma.channel.create({ data: { code: 'BATN', name: 'BAT News 24', timeZone: 'Asia/Colombo', broadcastDayStartMinute: 300 } });
 
   // ── Media assets (demo placeholders: tiny files with valid headers, not playable media) ──
-  const dir = path.resolve(process.env.STORAGE_LOCAL_DIR ?? './storage/uploads');
-  await mkdir(dir, { recursive: true });
+  // Written through the configured storage driver (local disk, or Vercel Blob when hosted).
   const asset = async (name: string, kind: 'mp4' | 'png') => {
     const bytes = kind === 'png' ? Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8ffff3f0005fe02fea7d6a4ff0000000049454e44ae426082', 'hex') : Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypisom'), Buffer.alloc(12)]);
-    const key = `${randomUUID()}.${kind}`;
-    await writeFile(path.join(dir, key), bytes);
-    return prisma.mediaAsset.create({ data: { originalName: `${name}.${kind}`, storageKey: key, mimeType: kind === 'png' ? 'image/png' : 'video/mp4', sizeBytes: bytes.length, checksumSha256: createHash('sha256').update(bytes).digest('hex') } });
+    const { key, sha256 } = await storage().put(bytes, kind);
+    return prisma.mediaAsset.create({ data: { originalName: `${name}.${kind}`, storageKey: key, mimeType: kind === 'png' ? 'image/png' : 'video/mp4', sizeBytes: bytes.length, checksumSha256: sha256 } });
   };
 
   // ── Content ──

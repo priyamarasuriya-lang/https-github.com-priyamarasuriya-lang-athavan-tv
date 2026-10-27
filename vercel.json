@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "installCommand": "npm ci",
+  "buildCommand": "DATABASE_URL=\"${DATABASE_URL_UNPOOLED:-$DATABASE_URL}\" npx prisma migrate deploy && npx prisma generate && npx next build",
+  "regions": ["sin1"],
+  "functions": {
+    "src/app/api/**/*.ts": { "maxDuration": 60 }
+  }
+}

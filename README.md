@@ -23,7 +23,7 @@ modern, accessible dashboard layout.
 - [Testing](#testing)
 - [Project structure](#project-structure)
 - [Known limitations](#known-limitations)
-- Further docs: [Architecture & scheduling rules](docs/architecture.md) · [API](docs/api.md) · [Operations: deploy, backup, restore](docs/operations.md)
+- Further docs: [Architecture & scheduling rules](docs/architecture.md) · [API](docs/api.md) · [Operations: deploy, backup, restore](docs/operations.md) · [Deploying to Vercel](docs/vercel.md)
 
 ---
 
@@ -169,7 +169,7 @@ Recorded honestly — none of these are presented as working in the UI.
 
 - **No playout integration.** “Now/next” on the dashboard is derived from the schedule plan and labelled as such. Actual airings (`AIRED`, as-run times) and the planned-vs-actual report stay empty until an automation system writes `actualStartAt`/`actualDurationMs` and airing status.
 - **No email service.** Password resets are done by administrators in User Management; there is no self-service reset email.
-- **Media storage** uses the local filesystem driver (`STORAGE_DRIVER=local`). The `StorageDriver` interface is the boundary for an S3-compatible driver, which is not implemented. No thumbnails, transcoding, duration probing or preview playback.
+- **Media storage** uses the local filesystem (`STORAGE_DRIVER=local`) or private Vercel Blob storage (`vercel-blob`, default on Vercel, uploads limited to ~4 MB there). An S3-compatible driver is not implemented. No thumbnails, transcoding, duration probing or preview playback.
 - **Ad placement is manual** (with full rule enforcement on validation). There is no automatic spot-placement/optimisation algorithm.
 - **Docker / CI files are written but were not executed here** — Docker was not installed on the development machine and the GitHub workflow has not run yet.
 - **Campaign daily/weekly quotas across channels** bucket other channels' airings by the *current* channel's local date; this is exact for stations whose channels share a time zone.

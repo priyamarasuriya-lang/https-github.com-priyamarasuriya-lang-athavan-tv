@@ -38,9 +38,44 @@ class LocalStorage implements StorageDriver {
   }
 }
 
+/**
+ * Vercel Blob (for serverless hosting, where the local disk is not persistent). Blobs are stored with
+ * private access under random names, so media is never publicly reachable by URL.
+ * Server uploads on Vercel are limited by the platform's ~4.5 MB request body size.
+ */
+class VercelBlobStorage implements StorageDriver {
+  private static readonly PREFIX = 'media/';
+  private resolve(key: string) {
+    if (!/^[a-f0-9-]{36}\.[a-z0-9]{1,8}$/.test(key)) throw new Error('Invalid storage key');
+    return `${VercelBlobStorage.PREFIX}${key}`;
+  }
+  async put(bytes: Uint8Array, ext: string) {
+    const { put } = await import('@vercel/blob');
+    const key = `${randomUUID()}.${ext}`;
+    await put(this.resolve(key), Buffer.from(bytes), { access: 'private', addRandomSuffix: false, allowOverwrite: false });
+    return { key, sha256: createHash('sha256').update(bytes).digest('hex') };
+  }
+  async exists(key: string) {
+    const { head, BlobNotFoundError } = await import('@vercel/blob');
+    try {
+      await head(this.resolve(key));
+      return true;
+    } catch (e) {
+      if (e instanceof BlobNotFoundError) return false;
+      throw e;
+    }
+  }
+  async remove(key: string) {
+    const { del } = await import('@vercel/blob');
+    await del(this.resolve(key)).catch(() => undefined);
+  }
+}
+
 let driver: StorageDriver | null = null;
 export function storage(): StorageDriver {
-  return (driver ??= new LocalStorage(path.resolve(env().STORAGE_LOCAL_DIR)));
+  if (driver) return driver;
+  driver = env().STORAGE_DRIVER === 'vercel-blob' ? new VercelBlobStorage() : new LocalStorage(path.resolve(env().STORAGE_LOCAL_DIR));
+  return driver;
 }
 
 /**
