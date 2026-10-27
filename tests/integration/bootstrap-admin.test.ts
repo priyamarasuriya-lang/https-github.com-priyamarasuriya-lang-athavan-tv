@@ -3,7 +3,7 @@ import { POST as login } from '@/app/api/auth/login/route';
 import { GET as me } from '@/app/api/auth/me/route';
 import { PERMISSIONS, ROLES } from '@/server/auth/permissions';
 import { prisma } from '@/server/db';
-import { bootstrapSuperAdmin } from '@/server/services/bootstrap-admin';
+import { bootstrapSuperAdmin, bootstrapSuperAdminFromEnv } from '@/server/services/bootstrap-admin';
 import { call, resetDb } from './helpers';
 
 const EMAIL = 'Owner@Example.com';
@@ -47,5 +47,24 @@ describe('Super Administrator bootstrap (scripts/create-admin.ts)', () => {
     expect(await prisma.role.count()).toBe(Object.keys(ROLES).length);
     await expect(bootstrapSuperAdmin({ email: 'c@example.com', name: 'C', password: 'short' })).rejects.toThrow(/at least 12/);
     await expect(bootstrapSuperAdmin({ email: 'd@example.com', password: FIRST })).rejects.toThrow(/name is required/);
+  });
+});
+
+describe('Super Administrator bootstrap on deploy (ADMIN_EMAIL / ADMIN_PASSWORD)', () => {
+  it('skips without both variables, creates the first admin, then never touches accounts again', async () => {
+    expect(await bootstrapSuperAdminFromEnv({ ADMIN_EMAIL: EMAIL })).toMatch(/skipping/);
+    expect(await prisma.user.count()).toBe(0);
+
+    expect(await bootstrapSuperAdminFromEnv({ ADMIN_EMAIL: EMAIL, ADMIN_PASSWORD: FIRST })).toMatch(/owner@example.com is a Super Administrator/);
+    expect((await call(login, { method: 'POST', body: { email: EMAIL, password: FIRST } })).status).toBe(200);
+
+    // A later deploy with a different password changes nothing.
+    expect(await bootstrapSuperAdminFromEnv({ ADMIN_EMAIL: EMAIL, ADMIN_PASSWORD: SECOND })).toMatch(/already exists/);
+    expect((await call(login, { method: 'POST', body: { email: EMAIL, password: SECOND } })).status).toBe(401);
+  });
+
+  it('rejects a weak password without creating anyone', async () => {
+    await expect(bootstrapSuperAdminFromEnv({ ADMIN_EMAIL: EMAIL, ADMIN_PASSWORD: 'short' })).rejects.toThrow(/at least 12/);
+    expect(await prisma.user.count()).toBe(0);
   });
 });

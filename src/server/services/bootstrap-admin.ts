@@ -4,7 +4,8 @@ import { prisma } from '@/server/db';
 import { recordAudit } from './audit';
 
 /**
- * Operator bootstrap (scripts/create-admin.ts), run outside the app with no signed-in actor.
+ * Operator bootstrap (scripts/create-admin.ts, or scripts/bootstrap-admin-env.ts during a deploy), run outside
+ * the app with no signed-in actor.
  * Creates a Super Administrator, or with `reset` gives an existing account a new password, re-activates
  * and unlocks it, grants SUPER_ADMIN and signs out its sessions.
  */
@@ -29,7 +30,7 @@ export async function ensureSystemRoles() {
   return prisma.role.findUniqueOrThrow({ where: { key: 'SUPER_ADMIN' } });
 }
 
-export async function bootstrapSuperAdmin(input: { email: string; name?: string; password: string; reset?: boolean }) {
+export async function bootstrapSuperAdmin(input: { email: string; name?: string; password: string; reset?: boolean; via?: string }) {
   const email = input.email.trim().toLowerCase();
   const policy = passwordPolicyError(input.password);
   if (policy) throw new Error(policy);
@@ -57,10 +58,33 @@ export async function bootstrapSuperAdmin(input: { email: string; name?: string;
         action: existing ? 'user.update' : 'user.create',
         entityType: 'User',
         entityId: u.id,
-        summary: `${u.email} as SUPER_ADMIN via scripts/create-admin.ts${existing ? ' (password reset)' : ''}`,
+        summary: `${u.email} as SUPER_ADMIN via ${input.via ?? 'scripts/create-admin.ts'}${existing ? ' (password reset)' : ''}`,
       },
       tx,
     );
     return { id: u.id, email: u.email, created: !existing };
   });
+}
+
+/**
+ * Deploy-time bootstrap for hosts where nobody can open a terminal (scripts/bootstrap-admin-env.ts, run by
+ * the Vercel build). Creates the first Super Administrator from ADMIN_EMAIL / ADMIN_PASSWORD / ADMIN_NAME,
+ * but only while no active Super Administrator exists, so later deploys never touch accounts.
+ */
+export async function bootstrapSuperAdminFromEnv(vars: Record<string, string | undefined>): Promise<string> {
+  const email = vars.ADMIN_EMAIL?.trim().toLowerCase();
+  const password = vars.ADMIN_PASSWORD;
+  if (!email || !password) return 'ADMIN_EMAIL / ADMIN_PASSWORD not set; skipping first-admin bootstrap.';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('ADMIN_EMAIL is not a valid email address.');
+  const active = await prisma.user.count({ where: { isActive: true, roles: { some: { role: { key: 'SUPER_ADMIN' } } } } });
+  if (active) return 'A Super Administrator already exists; skipping first-admin bootstrap.';
+  const existing = await prisma.user.findUnique({ where: { email } });
+  const user = await bootstrapSuperAdmin({
+    email,
+    name: vars.ADMIN_NAME?.trim() || 'Administrator',
+    password,
+    reset: !!existing,
+    via: 'ADMIN_EMAIL on deploy',
+  });
+  return `${user.email} is a Super Administrator and can sign in. Remove ADMIN_PASSWORD from the environment after the first sign-in.`;
 }
