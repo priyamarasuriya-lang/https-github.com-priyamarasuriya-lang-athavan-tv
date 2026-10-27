@@ -63,6 +63,12 @@ describe('Super Administrator bootstrap on deploy (ADMIN_EMAIL / ADMIN_PASSWORD)
     expect((await call(login, { method: 'POST', body: { email: EMAIL, password: SECOND } })).status).toBe(401);
   });
 
+  it('adds the ADMIN_EMAIL account even when another Super Administrator (e.g. demo data) exists', async () => {
+    await bootstrapSuperAdmin({ email: 'superadmin@bat.local', name: 'Demo', password: FIRST });
+    expect(await bootstrapSuperAdminFromEnv({ ADMIN_EMAIL: EMAIL, ADMIN_PASSWORD: SECOND })).toMatch(/is a Super Administrator/);
+    expect((await call(login, { method: 'POST', body: { email: EMAIL, password: SECOND } })).status).toBe(200);
+  });
+
   it('rejects a weak password without creating anyone', async () => {
     await expect(bootstrapSuperAdminFromEnv({ ADMIN_EMAIL: EMAIL, ADMIN_PASSWORD: 'short' })).rejects.toThrow(/at least 12/);
     expect(await prisma.user.count()).toBe(0);

@@ -21,12 +21,12 @@ project's production domain.
    | --- | --- |
    | `SESSION_SECRET` | 32+ random bytes, e.g. output of `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` |
    | `APP_URL` | Optional. Your custom domain (e.g. `https://schedule.example.com`). Defaults to the Vercel production domain. |
-   | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | The first Super Administrator, created by the next deploy while none exists (password: 12+ chars, upper/lower-case, digit). Optional `ADMIN_NAME`. Remove `ADMIN_PASSWORD` after the first sign-in. |
+   | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | A Super Administrator, created by the next deploy (and at server start) when no account with that email exists (password: 12+ chars, upper/lower-case, digit). Optional `ADMIN_NAME`. Remove `ADMIN_PASSWORD` after the first sign-in. |
    | `SEED_PASSWORD` | Only if you will load demo data: a strong password of your choice (12+ chars, upper/lower-case, digit). |
 
 5. **Deploy** (*Deployments → Redeploy*). The build runs `prisma migrate deploy` against the Neon
-   database, creates the first Super Administrator from `ADMIN_EMAIL` / `ADMIN_PASSWORD` if none exists
-   yet (`scripts/bootstrap-admin-env.ts`; later deploys never change accounts), then `next build`.
+   database, creates `ADMIN_EMAIL` as a Super Administrator if that account does not exist yet
+   (`scripts/bootstrap-admin-env.ts`; existing accounts are never changed), then `next build`.
 
 ## Loading data
 

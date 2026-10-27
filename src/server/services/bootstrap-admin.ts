@@ -67,24 +67,17 @@ export async function bootstrapSuperAdmin(input: { email: string; name?: string;
 }
 
 /**
- * Deploy-time bootstrap for hosts where nobody can open a terminal (scripts/bootstrap-admin-env.ts, run by
- * the Vercel build). Creates the first Super Administrator from ADMIN_EMAIL / ADMIN_PASSWORD / ADMIN_NAME,
- * but only while no active Super Administrator exists, so later deploys never touch accounts.
+ * Deploy-time bootstrap for hosts where nobody can open a terminal: run by the Vercel build
+ * (scripts/bootstrap-admin-env.ts) and at server start (src/instrumentation.ts). Creates ADMIN_EMAIL as a
+ * Super Administrator with ADMIN_PASSWORD (and optional ADMIN_NAME) when no account with that email exists.
+ * An existing account is never changed, so later deploys cannot reset a password the owner has since changed.
  */
 export async function bootstrapSuperAdminFromEnv(vars: Record<string, string | undefined>): Promise<string> {
   const email = vars.ADMIN_EMAIL?.trim().toLowerCase();
   const password = vars.ADMIN_PASSWORD;
   if (!email || !password) return 'ADMIN_EMAIL / ADMIN_PASSWORD not set; skipping first-admin bootstrap.';
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('ADMIN_EMAIL is not a valid email address.');
-  const active = await prisma.user.count({ where: { isActive: true, roles: { some: { role: { key: 'SUPER_ADMIN' } } } } });
-  if (active) return 'A Super Administrator already exists; skipping first-admin bootstrap.';
-  const existing = await prisma.user.findUnique({ where: { email } });
-  const user = await bootstrapSuperAdmin({
-    email,
-    name: vars.ADMIN_NAME?.trim() || 'Administrator',
-    password,
-    reset: !!existing,
-    via: 'ADMIN_EMAIL on deploy',
-  });
+  if (await prisma.user.findUnique({ where: { email }, select: { id: true } })) return `${email} already exists; skipping first-admin bootstrap.`;
+  const user = await bootstrapSuperAdmin({ email, name: vars.ADMIN_NAME?.trim() || 'Administrator', password, via: 'ADMIN_EMAIL on deploy' });
   return `${user.email} is a Super Administrator and can sign in. Remove ADMIN_PASSWORD from the environment after the first sign-in.`;
 }
